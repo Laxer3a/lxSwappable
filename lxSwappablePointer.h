@@ -1,7 +1,6 @@
 #ifndef LX_SWAPPABLE_H
 #define LX_SWAPPABLE_H
 
-namespace lx {
 /*
 // ====================================================================================
 //	Library for hot-swappable smart pointer.
@@ -56,7 +55,10 @@ Sample Usage here :
 	//
 */
 
+namespace lx {
+
 class Swappable;
+template < typename T > class hotswap_ptr;
 
 struct SwappableInstance {
 	SwappableInstance()
@@ -77,6 +79,7 @@ struct SwappableInstance {
 */
 class SwappableManager {
 	friend class Swappable;
+	template<class U> friend class hotswap_ptr;
 private:
 	/////////////////////////////////////////////////////////////////////
 	// Internal arrays and associated allocator info.
@@ -112,12 +115,12 @@ private:
 
 private:
 
-	//
+	// ==================================================================
 	// Internal implementation of the manager
 	// - Remove swappable entry
 	// - Allocate swappable entry
 	// - Add and remove a user of the same instance on the list.
-	//
+	// ==================================================================
 
 	void freeSwappable(unsigned int handle);
 
@@ -158,15 +161,15 @@ public:
 	/** 
 		Just a clean interface for future extension.
 		Manager should NEVER be destroyed before anything else.
+		(May be do assert here to check that somebody is still in the room...)
 	 */
-	// May be do assert here to check that somebody is still in the room...
 	void release() { }
 };
 
 /** Just add a Swappable member to any of your classes, can handle 3 user without any allocation */
 class Swappable {
+	template<class U> friend class hotswap_ptr;
 	friend class SwappableManager;
-
 	/** Pass a buffer allocated outside, responsability to free it to the library user.
 	 */
 public:
@@ -211,7 +214,6 @@ private:
 	void registerObject	(Swappable* tracker);
 	void unregisterObject(Swappable* tracker);
 
-	// 6x Pointers + 32 bit int.
 	SwappableManager*	m_mgr;
 	void*				m_owner;
 	unsigned int		m_handle;
@@ -267,13 +269,15 @@ public:
 
 	hotswap_ptr(T* pValue) : pData(pValue)
 	{
-		instance.ptr = pValue;
-		pValue->_trackMe._SwappableWrite(&instance, (void*)pValue);
+		if (pValue) {
+			instance.ptr = pValue;
+			pValue->_trackMe._SwappableWrite(&instance, (void*)pValue);
+		}
 	}
 
 	~hotswap_ptr()
 	{
-		((T*)instance.ptr)->_trackMe._SwappableWrite(&instance, (void*)NULL);
+		((T*)instance.ptr)->_trackMe._SwappableReset(&instance);
 	}
 
 	T& operator* ()
@@ -309,13 +313,42 @@ public:
 		}
 		return *this;
 	}
+
+	// Support for user defined (void*) NULL macro in some cases.
+	/* 
+		Not supported for now, we do not want people to stick any pointer by mistake and be "OK".
+		Prefer to have a nice compiler error about the type.
+		So, what happends with nullptr Cx11 isnt very nice either.
+
+		The problem is that I do NOT want to support exception in my library.
+		The code should be portable and fast for embedded systems.
+
+	hotswap_ptr<T>& operator = (void* obj)
+	{
+		if (this->instance.ptr != obj) {
+			update(obj);
+		}
+		return *this;
+	}
+	*/
+	
+	// Support for NULL, it can't be helped.
+	hotswap_ptr<T>& operator = (int obj)
+	{
+		if (obj == 0) {
+			if (this->instance.ptr != (void*)0) {
+				update(0);
+			}
+		}
+		return *this;
+	}
 	
 	/* Hotswap from any place all user of the same pointer.
 	   Return false if current object is NULL or if new object is NULL.*/
 	bool hotSwapTo(T* obj) {
 		if (this->instance.ptr && obj) {
 			T* a = (T*)this->instance.ptr;
-			a->_trackMe->m_mgr->replace(a->_trackMe, obj->_trackMe);
+			a->_trackMe.m_mgr->replaceObject(&a->_trackMe, &obj->_trackMe);
 			return true;
 		} else {
 			// 
