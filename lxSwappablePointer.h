@@ -316,6 +316,7 @@ public:
 		if (this->instance.ptr && obj) {
 			T* a = (T*)this->instance.ptr;
 			a->_trackMe->m_mgr->replace(a->_trackMe, obj->_trackMe);
+			return true;
 		} else {
 			// 
 			return false;
