@@ -65,7 +65,40 @@ Sample Usage here :
 #ifndef LX_SWAPPABLE_H
 #define LX_SWAPPABLE_H
 
-// WHY DO I NEED FOR PORTABILITY FUCK SAKE to have a size_t and a fucking long build time include ?
+/*
+    Architecture and design choices :
+
+    - Uses explicitly basic C type on purpose to have less sources, but also be able to do multiple include
+    without having to worry about type redefinition.
+
+    There is just a "mess" to include cstddef because of redefinition of new operator which is a size_t type.
+
+    - To avoid key search and allow O(1) type of response, we are forced to have
+    any swappable class instance to incorporate information relative to tracking.
+    Moreover, the ability to add tracking of classes without using inheritance was a MUST in
+    term of design.
+
+    - Finally, each pointer references use 3 pointer. It could be reduced to one
+    at the condition of storing the link list from the tracking information, but in this case
+    insertion and deletion would go to O(n) with all the following cache miss due to parsing.
+    2 Pointers could work to put things back into O(1) but we would still need to perform
+    allocation of a page somehow. It is true that can separate the
+    triple { ptr, next, prev } inside the smart pointer into { ptr, ptrLink } + { next, prev }
+    and have each instance created as other member inside the class using the pointer
+    ie :
+    class A {
+        hotswap_ptr<SOMETHING> m_ref;
+        ...
+        ...
+        ...
+        // At the end of the class
+        hotswap_lnk m_refLink; // have m_ref storing ptrLink pointing to this structure.
+    }
+    It would make access more cache friendly but would require just too much work from
+    developers I think.
+
+ */
+
 #include <cstddef>
 
 namespace lx {
